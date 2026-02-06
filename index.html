@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Neural Pulse: HTML5 Edition</title>
+    <style>
+        body { background: #0a0a14; color: white; font-family: 'Arial', sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; overflow: hidden; }
+        canvas { background: #0f0f1f; border: 2px solid #00ffc8; box-shadow: 0 0 20px rgba(0, 255, 200, 0.2); cursor: crosshair; }
+        .stats { position: absolute; top: 20px; font-size: 20px; letter-spacing: 2px; }
+    </style>
+</head>
+<body>
+
+    <div class="stats">LEVEL: <span id="level">1</span> | SCORE: <span id="score">0</span></div>
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        // Game States: MENU, LOGIC, MEMORIZING, PLAYING, GAMEOVER
+        let state = "MENU";
+        let level = 1, score = 0;
+        let sequence = [], userStep = 0;
+        let mathProb = { q: "", a: 0, options: [] };
+        let flashIndex = 0;
+        let penaltyMode = false;
+
+        // --- Core Logic ---
+        function initMath() {
+            const a = Math.floor(Math.random() * (10 + level));
+            const b = Math.floor(Math.random() * (10 + level));
+            mathProb.q = `${a} + ${b} = ?`;
+            mathProb.a = a + b;
+            mathProb.options = [
+                { val: mathProb.a, rect: { x: 250, y: 350, w: 80, h: 50 } },
+                { val: mathProb.a + 2, rect: { x: 360, y: 350, w: 80, h: 50 } },
+                { val: mathProb.a - 2, rect: { x: 470, y: 350, w: 80, h: 50 } }
+            ].sort(() => Math.random() - 0.5); // Shuffle options
+            // Re-assign X positions after shuffle
+            mathProb.options.forEach((opt, i) => opt.rect.x = 250 + (i * 110));
+        }
+
+        function initMemory() {
+            sequence = [];
+            const count = 2 + Math.floor(level / 3);
+            for(let i=0; i<count; i++) {
+                sequence.push({
+                    x: Math.random() * 700 + 50,
+                    y: Math.random() * 400 + 100,
+                    w: 50, h: 50
+                });
+            }
+            flashIndex = 0;
+            state = "MEMORIZING";
+            flashNext();
+        }
+
+        function flashNext() {
+            if (flashIndex < sequence.length) {
+                setTimeout(() => {
+                    flashIndex++;
+                    flashNext();
+                }, penaltyMode ? 300 : 800);
+            } else {
+                state = "PLAYING";
+                userStep = 0;
+            }
+        }
+
+        // --- Interaction ---
+        canvas.addEventListener('mousedown', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const mx = e.clientX - rect.left;
+            const my = e.clientY - rect.top;
+
+            if (state === "MENU" || state === "GAMEOVER") {
+                level = 1; score = 0;
+                state = "LOGIC";
+                initMath();
+            } else if (state === "LOGIC") {
+                mathProb.options.forEach(opt => {
+                    if (mx > opt.rect.x && mx < opt.rect.x + opt.rect.w && my > opt.rect.y && my < opt.rect.y + opt.rect.h) {
+                        penaltyMode = (opt.val !== mathProb.a);
+                        if(!penaltyMode) score += 50;
+                        initMemory();
+                    }
+                });
+            } else if (state === "PLAYING") {
+                const target = sequence[userStep];
+                if (mx > target.x && mx < target.x + target.w && my > target.y && my < target.y + target.h) {
+                    userStep++;
+                    score += 100;
+                    if (userStep === sequence.length) {
+                        level++;
+                        state = "LOGIC";
+                        initMath();
+                    }
+                } else {
+                    state = "GAMEOVER";
+                }
+            }
+            document.getElementById('level').innerText = level;
+            document.getElementById('score').innerText = score;
+        });
+
+        // --- Drawing ---
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            if (state === "MENU") {
+                ctx.fillStyle = "#00ffc8";
+                ctx.font = "40px Arial";
+                ctx.fillText("NEURAL PULSE", 250, 250);
+                ctx.font = "20px Arial";
+                ctx.fillText("Click to Start Training", 290, 300);
+
+            } else if (state === "LOGIC") {
+                ctx.fillStyle = "white";
+                ctx.font = "30px Arial";
+                ctx.fillText("LOGIC GATE", 310, 200);
+                ctx.font = "50px Arial";
+                ctx.fillText(mathProb.q, 320, 280);
+                mathProb.options.forEach(opt => {
+                    ctx.strokeStyle = "#bc6aff";
+                    ctx.strokeRect(opt.rect.x, opt.rect.y, opt.rect.w, opt.rect.h);
+                    ctx.font = "20px Arial";
+                    ctx.fillText(opt.val, opt.rect.x + 25, opt.rect.y + 35);
+                });
+
+            } else if (state === "MEMORIZING") {
+                ctx.fillStyle = "#ffcc00";
+                ctx.fillText("MEMORIZE...", 340, 50);
+                if (flashIndex < sequence.length) {
+                    const s = sequence[flashIndex];
+                    ctx.fillRect(s.x, s.y, s.w, s.h);
+                }
+
+            } else if (state === "PLAYING") {
+                ctx.strokeStyle = "#00ffc8";
+                ctx.strokeText("REPEAT PATTERN", 310, 50);
+                sequence.forEach(s => ctx.strokeRect(s.x, s.y, s.w, s.h));
+
+            } else if (state === "GAMEOVER") {
+                ctx.fillStyle = "red";
+                ctx.font = "40px Arial";
+                ctx.fillText("OUT OF SYNC", 270, 250);
+                ctx.fillStyle = "white";
+                ctx.font = "20px Arial";
+                ctx.fillText(`Final Score: ${score}`, 330, 300);
+                ctx.fillText("Click to Restart", 325, 350);
+            }
+
+            requestAnimationFrame(draw);
+        }
+
+        draw();
+    </script>
+</body>
+</html>
